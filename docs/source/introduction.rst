@@ -1,18 +1,16 @@
 .. _introduction:
 
-:Author: Marios Hadjieleftheriou
-:Contact: mhadji@gmail.com
-:Revision: 1.9.3
-:Date: 10/23/2019
+:Author: Marios Hadjieleftheriou <mhadji@gmail.com>
+:Contact: Developer mailing list https://groups.io/g/libspatialindex/
+:Revision: 2.0.0
+:Date: 2024-05-28
 
 
-The entire website is available as a single PDF at https://libspatialindex.org/libspatialindex.pdf
+The entire website is available as a single PDF at http://libspatialindex.org/_/downloads/en/latest/pdf/
 
 ------------------------------------------------------------------------------
 Introduction
 ------------------------------------------------------------------------------
-
-
 
 
 Library Goals
