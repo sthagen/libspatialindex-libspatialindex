@@ -29,7 +29,7 @@ class SidxApiRTreeTest : public testing::Test {
       IndexProperty_SetIndexType(props, RT_RTree);
       IndexProperty_SetIndexStorage(props, RT_Memory);
       idx = Index_Create(props);
-      IndexProperty_Destroy(props); 
+      IndexProperty_Destroy(props);
       Index_InsertData(idx, nId, min, max, nDims, (uint8_t *)pszData, strlen(pszData) + 1);
     }
 
@@ -50,46 +50,64 @@ TEST_F(SidxApiRTreeTest, valid) {
 
 TEST_F(SidxApiRTreeTest, intersects_id) {
   uint64_t nResults;
-  int64_t* items;  
+  int64_t* items;
   Index_Intersects_id(idx, min, max, nDims, &items, &nResults);
   EXPECT_EQ(1, nResults);
-  EXPECT_EQ(nId, items[0]);   
-  free(items);  
+  EXPECT_EQ(nId, items[0]);
+  free(items);
 }
 
 TEST_F(SidxApiRTreeTest, intersects_nearest_id) {
   uint64_t nResults;
-  int64_t* items;  
+  int64_t* items;
   Index_NearestNeighbors_id(idx, min, max, nDims, &items, &nResults);
   EXPECT_EQ(1, nResults);
-  EXPECT_EQ(nId, items[0]);   
-  free(items);  
+  EXPECT_EQ(nId, items[0]);
+  free(items);
 }
 
 TEST_F(SidxApiRTreeTest, intersects_obj) {
   uint64_t nResults;
   IndexItemH* items;
   char* pszRes = nullptr;
-  uint64_t len = 0;  
+  uint64_t len = 0;
   Index_Intersects_obj(idx, min, max, nDims, &items, &nResults);
   ASSERT_EQ(1, nResults);
   IndexItem_GetData(items[0], (uint8_t **)&pszRes, &len);
   EXPECT_EQ(0, strcmp(pszData, pszRes));
   free(pszRes);
-  Index_DestroyObjResults(items, (uint32_t) nResults);  
+  Index_DestroyObjResults(items, (uint32_t) nResults);
+}
+
+
+// Freeing NULL must not leave an error behind for the next check. The
+// declared API only exposes the most recent error, so check after each call.
+static void ExpectNoErrorFrom(const char* method) {
+    char* msg = Error_GetLastErrorMsg();
+    if (msg != NULL) {
+        EXPECT_EQ(nullptr, strstr(msg, method)) << msg;
+        free(msg);
+    }
+}
+
+TEST(SidxApiErrorTest, freeing_null_results_is_not_an_error) {
+    Index_Free(NULL);
+    ExpectNoErrorFrom("Index_Free");
+    Index_DestroyObjResults(NULL, 0);
+    ExpectNoErrorFrom("Index_DestroyObjResults");
 }
 
 TEST_F(SidxApiRTreeTest, intersects_nearest_obj) {
   uint64_t nResults;
   IndexItemH* items;
   char* pszRes = nullptr;
-  uint64_t len = 0;  
+  uint64_t len = 0;
   Index_NearestNeighbors_obj(idx, min, max, nDims, &items, &nResults);
   ASSERT_EQ(1, nResults);
   IndexItem_GetData(items[0], (uint8_t **)&pszRes, &len);
   EXPECT_EQ(0, strcmp(pszData, pszRes));
   free(pszRes);
-  Index_DestroyObjResults(items, (uint32_t) nResults); 
+  Index_DestroyObjResults(items, (uint32_t) nResults);
 }
 
 TEST_F(SidxApiRTreeTest, intersects_count) {
@@ -141,6 +159,19 @@ TEST_F(SidxApiRTreeTest, contains_count) {
 }
 
 
+TEST_F(SidxApiRTreeTest, obj_queries_report_failure) {
+    // A 3-dimensional query against the 2-dimensional index throws inside
+    // libspatialindex; the error must be reported through the return value.
+    double min3[] = {0.5, 0.5, 0.5};
+    double max3[] = {0.5, 0.5, 0.5};
+    uint64_t nResults = 0;
+    IndexItemH* items = nullptr;
+
+    EXPECT_EQ(RT_Failure, Index_Intersects_obj(idx, min3, max3, 3, &items, &nResults));
+    EXPECT_EQ(RT_Failure, Index_Contains_obj(idx, min3, max3, 3, &items, &nResults));
+}
+
+
 class SidxApiBulkRTreeTest : public testing::Test {
   protected:
   void SetUp() override {
@@ -173,4 +204,36 @@ TEST_F(SidxApiBulkRTreeTest, bulk_intersects_count) {
   Index_Intersects_count(idx, min, max, 3, &nResults);
   EXPECT_EQ(2, nResults);
 }
+TEST(SidxApiErrorTest, error_stack_is_declared) {
+    // These are exported by libspatialindex_c; this only compiles if
+    // sidx_api.h declares them.
+    Error_Reset();
+    EXPECT_EQ(0, Error_GetErrorCount());
+    EXPECT_EQ(0, Error_GetLastErrorNum());
+
+    Error_PushError(RT_Failure, "message", "method");
+    EXPECT_EQ(1, Error_GetErrorCount());
+    EXPECT_EQ(RT_Failure, Error_GetLastErrorNum());
+    char* msg = Error_GetLastErrorMsg();
+    char* method = Error_GetLastErrorMethod();
+    EXPECT_STREQ("message", msg);
+    EXPECT_STREQ("method", method);
+    free(msg);
+    free(method);
+
+    Error_Pop();
+    EXPECT_EQ(0, Error_GetErrorCount());
+    Error_Reset();
+}
+
+TEST(SidxApiErrorTest, reset_clears_all_errors) {
+    // Where errors are kept on a stack (MSVC), Error_Reset must remove all
+    // of them, not just some.
+    for (int i = 0; i < 5; ++i)
+        Error_PushError(RT_Failure, "message", "method");
+    Error_Reset();
+    EXPECT_EQ(0, Error_GetErrorCount());
+    EXPECT_EQ(0, Error_GetLastErrorNum());
+}
+
 #endif // SIDX_API_TEST_H
